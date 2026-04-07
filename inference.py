@@ -166,10 +166,10 @@ async def run_task(client: OpenAI, env: CsvCleanerEnv, task_config: Dict) -> Non
 
     try:
         result     = await env.reset(task=task_name)
-        metadata   = result.metadata or {}
-        task_desc  = metadata.get("task_description", task_name)
-        dataset_info = json.dumps(metadata.get("columns", []), indent=2)
-        last_result  = metadata.get("last_action_result", "Ready")
+        obs_metadata = getattr(result.observation, "metadata", getattr(result, "metadata", {})) or {}
+        task_desc  = obs_metadata.get("task_description", task_name)
+        dataset_info = json.dumps(obs_metadata.get("columns", []), indent=2)
+        last_result  = obs_metadata.get("last_action_result", "Ready")
         history: List[str] = []
 
         for step in range(1, max_steps + 1):
@@ -198,11 +198,12 @@ async def run_task(client: OpenAI, env: CsvCleanerEnv, task_config: Dict) -> Non
             reward = result.reward if hasattr(result, "reward") and result.reward else 0.0
             done   = result.done   if hasattr(result, "done")   else False
 
-            if result.metadata:
-                progress     = result.metadata.get("progress", 0.0)
+            obs_metadata = getattr(result.observation, "metadata", getattr(result, "metadata", {})) or {}
+            if obs_metadata:
+                progress     = obs_metadata.get("progress", 0.0)
                 score        = progress
-                dataset_info = json.dumps(result.metadata.get("columns", []), indent=2)
-                last_result  = result.metadata.get("last_action_result", result_str)
+                dataset_info = json.dumps(obs_metadata.get("columns", []), indent=2)
+                last_result  = obs_metadata.get("last_action_result", result_str)
             else:
                 last_result = result_str
 
