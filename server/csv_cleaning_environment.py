@@ -272,20 +272,15 @@ class CsvCleaningEnvironment(MCPEnvironment):
     def _exec_get_info(self) -> str:
         if self._df is None:
             return "Error: No dataset loaded."
+        obs_data = self._get_observation_dict()
         info = {
-            "row_count": len(self._df),
-            "duplicate_count": int(self._df.duplicated().sum()),
-            "columns": [],
+            "row_count": obs_data["row_count"],
+            "duplicate_count": obs_data["duplicate_count"],
+            "columns": obs_data["columns"],
+            "task_description": obs_data["task_description"],
+            "last_action_result": obs_data["last_action_result"],
+            "progress": obs_data["progress"],
         }
-        for col in self._df.columns:
-            col_info = {
-                "name": col,
-                "dtype": str(self._df[col].dtype),
-                "null_count": int(self._df[col].isnull().sum()),
-                "unique_count": int(self._df[col].nunique()),
-                "sample_values": [str(v) for v in self._df[col].dropna().head(3).tolist()],
-            }
-            info["columns"].append(col_info)
         return json.dumps(info, indent=2)
 
     # ------------------------------------------------------------------

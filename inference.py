@@ -125,6 +125,18 @@ def normalize_tool_call(tool_call: Dict[str, Any]) -> tuple[str, Dict[str, Any]]
     return tool_name, normalized_args
 
 
+def parse_dataset_snapshot(result_str: str) -> Optional[Dict[str, Any]]:
+    """Parse dataset info payload when a tool returns JSON snapshot text."""
+    try:
+        payload = json.loads(result_str)
+    except Exception:
+        return None
+
+    if isinstance(payload, dict) and "columns" in payload:
+        return payload
+    return None
+
+
 def get_model_response(
     client: OpenAI,
     task_desc: str,
@@ -165,7 +177,14 @@ def get_model_response(
         text = (completion.choices[0].message.content or "").strip()
         return parse_tool_call(text)
     except Exception as exc:
-        print(f"[DEBUG] Model request failed: {exc}", flush=True)
+        error_text = str(exc)
+        print(f"[DEBUG] Model request failed: {error_text}", flush=True)
+
+        # Stop the task early when provider quota is exhausted instead of
+        # repeatedly falling back to no-op tool calls.
+        if "Error code: 402" in error_text or "depleted your monthly included credits" in error_text:
+            return {"tool": "__quota_exhausted__", "args": {}}
+
         return None
 
 
@@ -180,6 +199,7 @@ async def run_task(client: OpenAI, env: CsvCleanerEnv, task_config: Dict) -> Non
     steps_taken: int         = 0
     score:       float       = 0.0
     success:     bool        = False
+    done:        bool        = False
 
     try:
         result     = await env.reset(task=task_name)
@@ -205,6 +225,10 @@ async def run_task(client: OpenAI, env: CsvCleanerEnv, task_config: Dict) -> Non
 
             tool_name, tool_args = normalize_tool_call(tool_call)
 
+            if tool_name == "__quota_exhausted__":
+                print("[DEBUG] Stopping task early due to provider quota exhaustion", flush=True)
+                break
+
             try:
                 action = CallToolAction(tool_name=tool_name, arguments=tool_args)
                 result = await env.step(action)
@@ -224,14 +248,28 @@ async def run_task(client: OpenAI, env: CsvCleanerEnv, task_config: Dict) -> Non
                 result_str = f"Error: {e}"
 
             reward = result.reward if hasattr(result, "reward") and result.reward else 0.0
-            done   = result.done   if hasattr(result, "done")   else False
+            done = result.done if hasattr(result, "done") else False
 
             obs_metadata = getattr(result.observation, "metadata", getattr(result, "metadata", {})) or {}
-            if obs_metadata:
-                progress     = obs_metadata.get("progress", 0.0)
-                score        = progress
-                dataset_info = json.dumps(obs_metadata.get("columns", []), indent=2)
-                last_result  = obs_metadata.get("last_action_result", result_str)
+            snapshot = parse_dataset_snapshot(result_str)
+
+            state_payload: Dict[str, Any] = {}
+            if isinstance(obs_metadata, dict):
+                state_payload.update(obs_metadata)
+            if isinstance(snapshot, dict):
+                state_payload.update(snapshot)
+
+            if state_payload:
+                progress = state_payload.get("progress")
+                if isinstance(progress, (int, float)):
+                    score = float(progress)
+
+                columns = state_payload.get("columns")
+                if isinstance(columns, list):
+                    dataset_info = json.dumps(columns, indent=2)
+
+                task_desc = state_payload.get("task_description", task_desc)
+                last_result = state_payload.get("last_action_result", result_str)
             else:
                 last_result = result_str
 
@@ -244,8 +282,15 @@ async def run_task(client: OpenAI, env: CsvCleanerEnv, task_config: Dict) -> Non
             if done:
                 break
 
-        score   = min(max(score, 0.0), 1.0)
-        success = score >= 0.5
+        if score == 0.0 and rewards:
+            # Fallback when progress metadata is unavailable from the client payload.
+            score = min(1.0, max(0.0, sum(rewards)))
+
+        score = min(max(score, 0.0), 1.0)
+
+        # Environment marks done=True on success or step-limit. If it ended before max steps,
+        # that's a reliable success signal even when explicit progress metadata is absent.
+        success = (done and steps_taken < max_steps) or score >= 0.95
 
     except Exception as e:
         print(f"[DEBUG] Task error: {e}", flush=True)
