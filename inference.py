@@ -228,7 +228,13 @@ async def main() -> None:
     # Use API_KEY as the API key — injected by the hackathon validator
     client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
 
-    env = await CsvCleanerEnv.from_docker_image(IMAGE_NAME)
+    if IMAGE_NAME:
+        env = await CsvCleanerEnv.from_docker_image(IMAGE_NAME)
+    else:
+        # Since uvicorn is already running on port 8000 inside the HF Space container, connect locally
+        env = CsvCleanerEnv(base_url="http://localhost:8000")
+        await env.connect()
+
     try:
         for task_config in TASKS:
             await run_task(client, env, task_config)
