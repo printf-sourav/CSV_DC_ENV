@@ -1,3 +1,13 @@
+---
+title: CSV Data Cleaning Environment
+emoji: 🧹
+colorFrom: blue
+colorTo: green
+sdk: docker
+app_port: 8000
+pinned: false
+---
+
 # CSV Cleaner Environment
 
 A real-world **data cleaning** OpenEnv environment where AI agents learn to clean messy CSV datasets through structured commands. Built on the [OpenEnv](https://github.com/meta-pytorch/OpenEnv) framework.
