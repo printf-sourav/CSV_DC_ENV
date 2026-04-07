@@ -27,15 +27,15 @@ from csv_cleaner_env import CsvCleanerEnv
 
 IMAGE_NAME   = os.getenv("IMAGE_NAME")
 API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")  # default allowed
-MODEL_NAME   = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")           # default allowed
-HF_TOKEN     = os.getenv("HF_TOKEN")                                           # NO default — injected by validator
+MODEL_NAME   = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
+API_KEY      = os.environ.get("API_KEY", os.environ.get("HF_TOKEN", "dummy_key"))
 
 BENCHMARK   = os.getenv("CSV_CLEANER_BENCHMARK", "csv_cleaner_env")
 TEMPERATURE = 0.3
 MAX_TOKENS  = 300
 
 # Debug print to confirm env vars are loaded
-print(f"[CONFIG] API_BASE_URL={API_BASE_URL} MODEL={MODEL_NAME} HF_TOKEN={'SET' if HF_TOKEN else 'NOT SET'}", flush=True)
+print(f"[CONFIG] API_BASE_URL={API_BASE_URL} MODEL={MODEL_NAME} API_KEY={'SET' if API_KEY != 'dummy_key' else 'NOT SET'}", flush=True)
 
 # Task configurations
 TASKS = [
@@ -225,8 +225,8 @@ async def run_task(client: OpenAI, env: CsvCleanerEnv, task_config: Dict) -> Non
 
 
 async def main() -> None:
-    # Use HF_TOKEN as the API key — injected by the hackathon validator
-    client = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN)
+    # Use API_KEY as the API key — injected by the hackathon validator
+    client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
 
     env = await CsvCleanerEnv.from_docker_image(IMAGE_NAME)
     try:
