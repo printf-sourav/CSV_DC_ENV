@@ -22,6 +22,7 @@ import textwrap
 from typing import Any, Dict, List, Optional
 
 from openai import OpenAI
+from openenv.core.env_server.mcp_types import CallToolAction
 
 from csv_cleaner_env import CsvCleanerEnv
 
@@ -108,6 +109,22 @@ def parse_tool_call(text: str) -> Optional[Dict[str, Any]]:
     return None
 
 
+def normalize_tool_call(tool_call: Dict[str, Any]) -> tuple[str, Dict[str, Any]]:
+    """Normalize model output into a safe tool name + args payload."""
+    tool_name = tool_call.get("tool", "get_dataset_info")
+    tool_args = tool_call.get("args", {})
+
+    if not isinstance(tool_args, dict):
+        tool_args = {}
+
+    # Model outputs sometimes include nulls for string fields; FastMCP rejects None for str args.
+    normalized_args: Dict[str, Any] = {}
+    for key, value in tool_args.items():
+        normalized_args[key] = "" if value is None else value
+
+    return tool_name, normalized_args
+
+
 def get_model_response(
     client: OpenAI,
     task_desc: str,
@@ -186,12 +203,23 @@ async def run_task(client: OpenAI, env: CsvCleanerEnv, task_config: Dict) -> Non
                 if tool_call is None:
                     tool_call = {"tool": "get_dataset_info", "args": {}}
 
-            tool_name = tool_call.get("tool", "get_dataset_info")
-            tool_args = tool_call.get("args", {})
+            tool_name, tool_args = normalize_tool_call(tool_call)
 
             try:
-                call_result = await env.call_tool(tool_name, **tool_args)
-                result_str  = str(call_result) if call_result else ""
+                action = CallToolAction(tool_name=tool_name, arguments=tool_args)
+                result = await env.step(action)
+
+                obs = result.observation
+                obs_error = getattr(obs, "error", None)
+                if obs_error is not None:
+                    result_str = f"Error: {getattr(obs_error, 'message', str(obs_error))}"
+                else:
+                    obs_result = getattr(obs, "result", None)
+                    if hasattr(obs_result, "data"):
+                        obs_result = obs_result.data
+                    elif isinstance(obs_result, dict) and "data" in obs_result:
+                        obs_result = obs_result["data"]
+                    result_str = str(obs_result) if obs_result is not None else ""
             except Exception as e:
                 result_str = f"Error: {e}"
 
