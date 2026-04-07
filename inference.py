@@ -25,10 +25,10 @@ from openai import OpenAI
 
 from csv_cleaner_env import CsvCleanerEnv
 
-IMAGE_NAME = os.getenv("IMAGE_NAME")
-API_KEY = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
-API_BASE_URL = os.getenv("API_BASE_URL") or "https://router.huggingface.co/v1"
-MODEL_NAME = os.getenv("MODEL_NAME") or "Qwen/Qwen2.5-72B-Instruct"
+IMAGE_NAME = os.environ.get("IMAGE_NAME", os.environ.get("LOCAL_IMAGE_NAME"))
+API_KEY = os.environ.get("API_KEY", os.environ.get("HF_TOKEN"))
+API_BASE_URL = os.environ.get("API_BASE_URL", "https://router.huggingface.co/v1")
+MODEL_NAME = os.environ.get("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
 BENCHMARK = os.getenv("CSV_CLEANER_BENCHMARK", "csv_cleaner_env")
 TEMPERATURE = 0.3
 MAX_TOKENS = 300
